@@ -1,6 +1,6 @@
 # MQTT Server with InfluxDB Integration
 
-This project implements a simple **MQTT server** in Python, supporting essential MQTT operations such as `CONNECT`, `PUBLISH`, `SUBSCRIBE`, and `PINGREQ`. The server stores published data in an **InfluxDB** database and distributes messages to subscribed clients. 
+This project implements a simple **MQTT server** in Python, supporting essential MQTT operations such as `CONNECT`, `PUBLISH`, `SUBSCRIBE`, and `PINGREQ`. The server stores published data in an **InfluxDB** database and distributes messages to subscribed clients.
 
 ---
 
@@ -93,6 +93,13 @@ This project implements a simple **MQTT server** in Python, supporting essential
   ```bash
   pip install influxdb
   ```
+
+---
+
+## TODO
+
+- **Node-Red integration**: Enable seamless IoT workflow management and visualization through **Node-Red**.
+- **Adding LSTM Algorithm**: Integrate a **Long Short-Term Memory (LSTM)** neural network to predict resource usage and scale system resources dynamically based on the incoming data patterns.
 
 ---
 
