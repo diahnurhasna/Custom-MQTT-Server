@@ -43,7 +43,7 @@ class MQTTServer:
         finally:
             self.remove_client(client_socket, address)
             client_socket.close()
-
+    
     def start(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind((self.host, self.port))
@@ -113,21 +113,31 @@ class MQTTServer:
         else:
             print("[ERROR] Invalid PUBLISH packet structure")
 
-
-
     def handle_subscribe(self, client_socket, data, address):
-        # ... (Extract topic filters, QoS levels, etc.) ...
-        packet_id = struct.unpack("!H", data[2:4])[0]
-        topic_length = struct.unpack("!H", data[4:6])[0]
-        topic = data[6:6 + topic_length].decode('utf-8')
-        qos = data[6 + topic_length]
+        try:
+            print(f"[DEBUG] Raw data for subscription: {data}")
+            packet_id = struct.unpack("!H", data[2:4])[0]
+            topic_length = struct.unpack("!H", data[4:6])[0]
 
-        self.topics[topic].add(client_socket)
-        print(f"[SUBSCRIBE] {self.clients[client_socket]['id']} subscribed to {topic} with QoS {qos}")
+            # Make sure to check bounds
+            if len(data) < 6 + topic_length:
+                print("[ERROR] Subscription data is too short.")
+                return
 
-        # ... (Send SUBACK packet) ...
-        suback_packet = struct.pack("!BBBH", 9, 2, packet_id, qos)
-        client_socket.sendall(suback_packet)
+            topic = data[6:6 + topic_length].decode('utf-8')
+            qos = data[6 + topic_length]
+
+            self.topics[topic].add(client_socket)
+            print(f"[SUBSCRIBE] {self.clients[client_socket]['id']} subscribed to {topic} with QoS {qos}")
+
+            # Send SUBACK packet
+            suback_packet = struct.pack("!BBH", 9, 2, packet_id)  # Packet type, return code, and packet ID
+            client_socket.sendall(suback_packet)
+
+        except Exception as e:
+            print(f"[ERROR] In handle_subscribe: {e}")
+            self.remove_client(client_socket, address)
+
 
     def handle_pingreq(self, client_socket):
         # ... (Send PINGRESP packet) ...
@@ -148,6 +158,7 @@ class MQTTServer:
             print(f"[CLIENT REMOVED] {client_id} removed.")
 
     def publish_to_subscribers(self, topic, payload):
+        print(f"[PUBLISH TO SUBSCRIBERS] Topic: {topic}, Payload: {payload}")
         for client in self.topics[topic]:
             try:
                 # ... (Construct PUBLISH packet) ...
