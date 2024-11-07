@@ -3,7 +3,8 @@ import threading
 from influxdb import InfluxDBClient
 import struct
 from collections import defaultdict
-
+import time
+import select
 
 class MQTTServer:
     def __init__(self, host='0.0.0.0', port=1884):
@@ -11,6 +12,7 @@ class MQTTServer:
         self.port = port
         self.clients = {}
         self.topics = defaultdict(set)
+        self.topic_lock = threading.Lock()  # Lock for thread-safe topic access
         self.use_influx = True  # Flag to check if InfluxDB is available
 
         # Attempt to connect to InfluxDB
@@ -26,43 +28,59 @@ class MQTTServer:
         print(f"[NEW CONNECTION] {address} connected.")
         try:
             buffer = b""
+            last_ping_time = time.time()  # Keep track of last PINGREQ
             while True:
-                data = client_socket.recv(1024)
-                if not data:
+                try:
+                    # Use select to handle both data and timeouts
+                    ready_to_read, _, _ = select.select([client_socket], [], [], 1)
+                    if ready_to_read:
+                        data = client_socket.recv(1024)
+                        if not data:
+                            break
+                        buffer += data
+                    else:
+                        # Check for keep-alive timeout (e.g., 120 seconds)
+                        if time.time() - last_ping_time > 120:
+                            print(f"[KEEP ALIVE TIMEOUT] {address}")
+                            break
+
+                    # Check if we've received enough data for at least the fixed header
+                    if len(buffer) < 2:
+                        continue  # Wait for more data
+
+                    # Read the packet type and remaining length from the fixed header
+                    packet_type = (buffer[0] >> 4) & 0x0F
+
+                    # Decode remaining length (this now takes the buffer as input)
+                    remaining_length, bytes_consumed = self.decode_remaining_length(buffer[1:])  
+
+                    # Wait until we have the full packet based on remaining length
+                    total_length = 2 + remaining_length  # +2 for fixed header
+                    if len(buffer) < total_length:
+                        continue  # Wait for more data
+
+                    # Process the packet based on packet type
+                    packet_data = buffer[:total_length]
+                    buffer = buffer[total_length:]  # Remove the processed packet from buffer
+
+                    if packet_type == 1:  # CONNECT
+                        self.handle_connect(client_socket, packet_data, address)
+                    elif packet_type == 3:  # PUBLISH
+                        self.handle_publish(client_socket, packet_data)
+                    elif packet_type == 8:  # SUBSCRIBE
+                        self.handle_subscribe(client_socket, packet_data, address)
+                    elif packet_type == 12:  # PINGREQ
+                        self.handle_pingreq(client_socket)
+                        last_ping_time = time.time()
+                    elif packet_type == 14:  # DISCONNECT
+                        self.handle_disconnect(client_socket, address)
+                        break
+                    else:
+                        print(f"[UNKNOWN PACKET TYPE] {packet_type}")
+
+                except socket.timeout:
+                    print(f"[KEEP ALIVE TIMEOUT] {address}")
                     break
-
-                buffer += data
-
-                # Check if we've received enough data for at least the fixed header
-                if len(buffer) < 2:
-                    continue  # Wait for more data
-
-                # Read the packet type and remaining length from the fixed header
-                packet_type = (buffer[0] >> 4) & 0x0F
-                remaining_length = buffer[1]
-
-                # Wait until we have the full packet based on remaining length
-                total_length = 2 + remaining_length
-                if len(buffer) < total_length:
-                    continue  # Wait for more data
-
-                # Process the packet based on packet type
-                packet_data = buffer[:total_length]
-                buffer = buffer[total_length:]  # Remove the processed packet from buffer
-
-                if packet_type == 1:  # CONNECT
-                    self.handle_connect(client_socket, packet_data, address)
-                elif packet_type == 3:  # PUBLISH
-                    self.handle_publish(client_socket, packet_data)
-                elif packet_type == 8:  # SUBSCRIBE
-                    self.handle_subscribe(client_socket, packet_data, address)
-                elif packet_type == 12:  # PINGREQ
-                    self.handle_pingreq(client_socket)
-                elif packet_type == 14:  # DISCONNECT
-                    self.handle_disconnect(client_socket, address)
-                    break
-                else:
-                    print(f"[UNKNOWN PACKET TYPE] {packet_type}")
 
         except Exception as e:
             print(f"[ERROR] {e}")
@@ -162,26 +180,36 @@ class MQTTServer:
 
     def handle_subscribe(self, client_socket, data, address):
         try:
-            print(f"[DEBUG] Raw data for subscription: {data}")
+            # Decode packet ID and topic length safely
+            if len(data) < 6:
+                print("[ERROR] Subscription data too short.")
+                return
+
             packet_id = struct.unpack("!H", data[2:4])[0]
             topic_length = struct.unpack("!H", data[4:6])[0]
 
+            # Ensure the data length is sufficient for the topic
             if len(data) < 6 + topic_length:
-                print("[ERROR] Subscription data is too short.")
+                print("[ERROR] Incomplete subscription packet.")
                 return
 
+            # Decode topic and QoS level
             topic = data[6:6 + topic_length].decode('utf-8')
-            qos = data[6 + topic_length]
+            qos = data[6 + topic_length]  # Get QoS level, assuming it's one byte
 
-            self.topics[topic].add(client_socket)
+            # Register the subscriber to the topic (thread-safe)
+            with self.topic_lock:
+                self.topics[topic].add(client_socket)
             print(f"[SUBSCRIBE] {self.clients[client_socket]['id']} subscribed to {topic} with QoS {qos}")
 
-            suback_packet = struct.pack("!BBH", 9, 2, packet_id)  # Packet type, return code, and packet ID
+            # Send SUBACK response to acknowledge subscription
+            suback_packet = struct.pack("!BBH", 0x90, 3, packet_id) + bytes([qos])  # 0x90 = SUBACK packet type
             client_socket.sendall(suback_packet)
 
         except Exception as e:
             print(f"[ERROR] In handle_subscribe: {e}")
             self.remove_client(client_socket, address)
+
 
     def handle_pingreq(self, client_socket):
         pingresp_packet = b'\xd0\x00'
@@ -202,37 +230,62 @@ class MQTTServer:
 
     def publish_to_subscribers(self, topic, payload):
         print(f"[PUBLISH TO SUBSCRIBERS] Topic: {topic}, Payload: {payload}")
-        for client in self.topics[topic]:
-            try:
-                publish_packet = self.create_publish_packet(topic, payload)
-                client.sendall(publish_packet)
-            except:
-                print(f"[ERROR] Failed to send message to client.")
+        # Iterate over a copy of the set to avoid issues during removal
+        with self.topic_lock:
+            for client in list(self.topics[topic]):
+                try:
+                    publish_packet = self.create_publish_packet(topic, payload)
+                    client.sendall(publish_packet)
+                except Exception as e:
+                    print(f"[ERROR] Failed to send message to client: {e}")
+                    self.remove_client(client, self.clients.get(client, {'address': 'unknown'})['address']) 
+
+
 
     def create_publish_packet(self, topic, payload):
+        # Fixed header
+        packet_type_flags = 0x30  # PUBLISH with QoS 0 and no retain
         topic_length = len(topic)
         payload_length = len(payload)
-        fixed_header = 0x30  # PUBLISH packet type with QoS 0
         remaining_length = topic_length + payload_length + 2  # +2 for topic length field
 
+        # Create packet with fixed header
         packet = bytearray()
-        packet.append(fixed_header << 4)
+        packet.append(packet_type_flags)  # PUBLISH fixed header byte
         packet.extend(self.encode_remaining_length(remaining_length))
-        packet.extend(struct.pack("!H", topic_length))
-        packet.extend(topic.encode('utf-8'))
-        packet.extend(payload.encode('utf-8'))
+        packet.extend(struct.pack("!H", topic_length))  # Topic length as 2 bytes
+        packet.extend(topic.encode('utf-8'))  # Topic
+        packet.extend(payload.encode('utf-8'))  # Payload
+
+        print(f"[DEBUG] Created publish packet: {packet}")
         return packet
 
-    def decode_remaining_length(self, client_socket):
+    def encode_remaining_length(self, length):
+        encoded_bytes = bytearray()
+        while True:
+            encoded_byte = length % 128
+            length //= 128
+            if length > 0:
+                encoded_byte |= 128
+            encoded_bytes.append(encoded_byte)
+            if length == 0:
+                break
+        return encoded_bytes
+
+
+    def decode_remaining_length(self, data):
+        """Decodes remaining length from a byte array."""
         multiplier = 1
         value = 0
+        index = 0
         while True:
-            encoded_byte = client_socket.recv(1)[0]
+            encoded_byte = data[index]
             value += (encoded_byte & 127) * multiplier
             if (encoded_byte & 128) == 0:
                 break
             multiplier *= 128
-        return value
+            index += 1
+        return value, index + 1  # Return length and bytes consumed
 
 
 if __name__ == "__main__":
