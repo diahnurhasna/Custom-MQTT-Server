@@ -7,7 +7,7 @@ import time
 import select
 
 class MQTTServer:
-    def __init__(self, host='0.0.0.0', port=1884):
+    def __init__(self, host='0.0.0.0', port=1883):
         self.host = host
         self.port = port
         self.clients = {}
