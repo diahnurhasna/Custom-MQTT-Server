@@ -5,11 +5,12 @@ import struct
 from collections import defaultdict
 import time
 import select
+import config
 
 class MQTTServer:
-    def __init__(self, host='0.0.0.0', port=1883):
-        self.host = host
-        self.port = port
+    def __init__(self):
+        self.host = config.MQTT_HOST
+        self.port = config.MQTT_PORT
         self.clients = {}
         self.topics = defaultdict(set)
         self.topic_lock = threading.Lock()  # Lock for thread-safe topic access
@@ -17,8 +18,12 @@ class MQTTServer:
 
         # Attempt to connect to InfluxDB
         try:
-            self.influx_client = InfluxDBClient(host='localhost', port=8086, database='mqtt_data')
-            self.influx_client.create_database('mqtt_data')  # Create if it doesn't exist
+            self.influx_client = InfluxDBClient(
+                host=config.INFLUXDB_HOST,
+                port=config.INFLUXDB_PORT,
+                database=config.INFLUXDB_DATABASE
+            )
+            self.influx_client.create_database(config.INFLUXDB_DATABASE)  # Create if it doesn't exist
             print("[INFO] Connected to InfluxDB")
         except Exception as e:
             print(f"[ERROR] InfluxDB connection failed: {e}")
