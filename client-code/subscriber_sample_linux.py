@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 
 # MQTT broker configuration
 MQTT_BROKER = '109.110.188.37'
-MQTT_PORT = 1884  # Typically 1883 for non-SSL connections
+MQTT_PORT = 1883  # Typically 1883 for non-SSL connections
 MQTT_TOPIC = 'sensor/data'
 
 # Callback function for when the client connects to the broker
