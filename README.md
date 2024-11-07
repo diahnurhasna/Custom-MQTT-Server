@@ -1,6 +1,8 @@
+---
+
 # MQTT Server with InfluxDB Integration
 
-This project implements a simple **MQTT server** in Python, supporting essential MQTT operations such as `CONNECT`, `PUBLISH`, `SUBSCRIBE`, and `PINGREQ`. The server stores published data in an **InfluxDB** database and distributes messages to subscribed clients.
+This project implements a simple **MQTT server** in Python, supporting essential MQTT operations like `CONNECT`, `PUBLISH`, `SUBSCRIBE`, and `PINGREQ`. The server stores published data in an **InfluxDB** database and distributes messages to subscribed clients.
 
 ---
 
@@ -122,3 +124,130 @@ For any questions or issues, please contact the project maintainer.
 ---
 
 Enjoy using the MQTT server! 🚀
+
+---
+
+# Server MQTT dengan Integrasi InfluxDB (Bahasa Indonesia)
+
+Proyek ini mengimplementasikan **server MQTT** sederhana menggunakan Python, yang mendukung operasi MQTT dasar seperti `CONNECT`, `PUBLISH`, `SUBSCRIBE`, dan `PINGREQ`. Server ini menyimpan data yang dipublikasikan di **database InfluxDB** dan mendistribusikan pesan ke klien yang berlangganan.
+
+---
+
+## Fitur
+- Dukungan protokol **MQTT** untuk `CONNECT`, `PUBLISH`, `SUBSCRIBE`, `PINGREQ`, dan `DISCONNECT`.
+- **Penanganan multi-klien** menggunakan thread Python.
+- **Integrasi InfluxDB** untuk menyimpan data topik yang dipublikasikan.
+- Dukungan untuk **QoS level 0** (pengiriman terbaik).
+- Pengiriman pesan berbasis **topik** ke klien yang berlangganan.
+
+---
+
+## Prasyarat
+
+1. **Python 3.x** telah terinstal  
+2. Instal paket Python yang diperlukan:
+   ```bash
+   pip install influxdb
+   ```
+
+3. Server **InfluxDB** berjalan pada `localhost` dengan port `8086`.
+
+4. Buat database InfluxDB:
+   ```bash
+   influx
+   CREATE DATABASE mqtt_data
+   ```
+
+---
+
+## Instalasi dan Penggunaan
+
+1. **Klon repositori ini:**
+   ```bash
+   git clone <repository_url>
+   cd <repository_name>
+   ```
+
+2. **Jalankan server MQTT:**
+   ```bash
+   python mqtt_server.py
+   ```
+
+3. Server akan mendengarkan di `0.0.0.0:1883` secara default:
+   ```
+   [LISTENING] Server is listening on 0.0.0.0:1883
+   ```
+
+---
+
+## Gambaran Umum Kode
+
+### Kelas `MQTTServer`
+- **`__init__`**: Menginisialisasi server, klien InfluxDB, dan struktur data untuk klien serta topik.
+- **`start()`**: Memulai server dan mendengarkan koneksi klien.
+- **`handle_client()`**: Mengelola koneksi klien individu dan memproses paket MQTT.
+- **`parse_packet_type()`**: Mendekode tipe paket dari data yang diterima.
+- **`handle_connect()`**: Memproses paket `CONNECT` dan mengirim respons `CONNACK`.
+- **`handle_publish()`**: Memproses paket `PUBLISH`, menyimpan data di InfluxDB, dan mengirim pesan ke subscriber.
+- **`handle_subscribe()`**: Mengelola langganan klien ke topik.
+- **`publish_to_subscribers()`**: Mengirim pesan ke klien yang berlangganan topik tertentu.
+- **`create_publish_packet()`**: Membangun paket `PUBLISH` MQTT.
+- **`handle_pingreq()`**: Menanggapi paket `PINGREQ`.
+- **`handle_disconnect()`**: Menangani pemutusan klien dan membersihkan sumber daya.
+
+---
+
+## Contoh Alur Kerja
+
+1. Seorang klien mengirim paket `CONNECT` ke server.
+2. Setelah koneksi berhasil, klien berlangganan topik.
+3. Klien lain mempublikasikan pesan ke topik yang dilanggan.
+4. Pesan disimpan di **InfluxDB** dan diteruskan ke subscriber.
+
+---
+
+## Penanganan Kesalahan
+
+- Paket tidak valid dicatat dengan `[ERROR]`.
+- Tipe paket tidak dikenal dicatat dengan `[UNKNOWN PACKET TYPE]`.
+- Pemutusan klien ditangani dengan baik untuk mengosongkan sumber daya.
+
+---
+
+## Ketergantungan
+
+- **Python 3.x**
+- **Klien InfluxDB Python**:  
+  Instal melalui:
+  ```bash
+  pip install influxdb
+  ```
+
+---
+
+## TODO
+
+- **Integrasi Node-Red**: Memungkinkan manajemen alur kerja IoT yang mulus melalui **Node-Red**.
+- **Penambahan Algoritma LSTM**: Integrasi **Long Short-Term Memory (LSTM)** untuk memprediksi penggunaan sumber daya dan menyesuaikan sumber daya sistem berdasarkan pola data yang masuk.
+
+---
+
+## Kontribusi
+
+Silakan buka isu atau kirim pull request untuk meningkatkan server MQTT ini!
+
+---
+
+## Lisensi
+
+Proyek ini dilisensikan di bawah Lisensi MIT. Lihat file `LICENSE` untuk informasi lebih lanjut.
+
+---
+
+## Kontak
+
+Untuk pertanyaan atau masalah, silakan hubungi pemelihara proyek ini.
+
+---
+
+Selamat menggunakan server MQTT! 🚀
