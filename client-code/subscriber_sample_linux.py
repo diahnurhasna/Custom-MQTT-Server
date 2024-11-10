@@ -29,3 +29,13 @@ try:
     # Connect to the broker
     client.connect(MQTT_BROKER, MQTT_PORT)
     print("Attempting to connect to broker...")
+
+    # Start the loop to process callbacks and keep the client connected
+    client.loop_forever()
+
+except KeyboardInterrupt:
+    print("Disconnecting from broker...")
+    client.disconnect()
+    print("Disconnected successfully.")
+except Exception as e:
+    print("An error occurred:", e)
